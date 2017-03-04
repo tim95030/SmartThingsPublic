@@ -74,7 +74,7 @@ def mainPage() {
       input "switch2", "capability.switch", multiple: true, required: false
     }
       section("And then turn ALL OF THE ABOVE OFF..."){
-      input "delayMinutes", "number", title: "When there's been no motion for ___ Minutes?"
+      input "delayMinutes", "number", title: "When there's been no motion for ___ Minutes?", defaultValue: 0, required: false
     }
 
 
@@ -350,7 +350,7 @@ def scheduleCheck() {
         log.info "${elapsed / 1000} sec since motion stopped"
         def threshold = 1000 * 60 * delayMinutes
 
-    if (elapsed >= threshold) {
+    if (threshold > 0 && elapsed >= threshold) {
           log.debug "Turning off lights"
         if (group1) {
             group1*.off()
