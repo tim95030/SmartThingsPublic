@@ -31,31 +31,12 @@ preferences {
   page(name: "configureButton2")
   page(name: "configureButton3")
   page(name: "configureButton4")
-
-  page(name: "timeIntervalInput", title: "Only during a certain time") {
-    section {
-      input "starting", "time", title: "Starting", required: false
-      input "ending", "time", title: "Ending", required: false
-    }
-  }
 }
 
 def selectButton() {
   dynamicPage(name: "selectButton", title: "First, select your button device", nextPage: "configureButton1", uninstall: configured()) {
     section {
       input "buttonDevice", "capability.button", title: "Button", multiple: false, required: true
-    }
-
-    section(title: "More options", hidden: hideOptionsSection(), hideable: true) {
-
-      def timeLabel = timeIntervalLabel()
-
-      href "timeIntervalInput", title: "Only during a certain time", description: timeLabel ?: "Tap to set", state: timeLabel ? "complete" : null
-
-      input "days", "enum", title: "Only on certain days of the week", multiple: true, required: false,
-        options: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
-      input "modes", "mode", title: "Only when mode is", multiple: true, required: false
     }
   }
 }
@@ -80,48 +61,38 @@ def configureButton4() {
 
 def getButtonSections(buttonNumber) {
   return {
-    section("Lights") {
-      input "lights_${buttonNumber}_pushed", "capability.switch", title: "Pushed", multiple: true, required: false
-      input "lights_${buttonNumber}_held", "capability.switch", title: "Held", multiple: true, required: false
-    }
-    section("Locks") {
-      input "locks_${buttonNumber}_pushed", "capability.lock", title: "Pushed", multiple: true, required: false
-      input "locks_${buttonNumber}_held", "capability.lock", title: "Held", multiple: true, required: false
-    }
-    section("Sonos") {
-      input "sonos_${buttonNumber}_pushed", "capability.musicPlayer", title: "Pushed", multiple: true, required: false
-      input "sonos_${buttonNumber}_held", "capability.musicPlayer", title: "Held", multiple: true, required: false
-    }
-    section("Modes") {
-      input "mode_${buttonNumber}_pushed", "mode", title: "Pushed", required: false
-      input "mode_${buttonNumber}_held", "mode", title: "Held", required: false
-    }
-    def phrases = location.helloHome?.getPhrases()*.label
-    if (phrases) {
-      section("Hello Home Actions") {
-        log.trace phrases
-        input "phrase_${buttonNumber}_pushed", "enum", title: "Pushed", required: false, options: phrases
-        input "phrase_${buttonNumber}_held", "enum", title: "Held", required: false, options: phrases
+    section("Hue Lights") {
+      input "lights_${buttonNumber}_pushed", "capability.switch", title: "Lights", multiple: true, required: false
+      input "lightsAction_${buttonNumber}_pushed", "enum", multiple: false, title: "Button Action:", required: false, metadata:[values:["On","Off"]]
+      if (buttonNumber == 1) {
+        getColorLightInputs(buttonNumber)
+      } else {
+        input "lightsLevel_${buttonNumber}_pushed", "integer", title: "Level: 1 to 100", defaultValue: 100, required: true, multiple: false
+        input "lightsColor_${buttonNumber}_pushed", "enum", multiple: false, title: "Color (Default is Soft White):", defaultValue: "Soft White", required: true, metadata:[values:["Soft White","White","Daylight","Warm White","Red","Green","Blue","Yellow","Orange","Purple","Pink"]]
       }
     }
-        section("Sirens") {
-            input "sirens_${buttonNumber}_pushed","capability.alarm" ,title: "Pushed", multiple: true, required: false
-            input "sirens_${buttonNumber}_held", "capability.alarm", title: "Held", multiple: true, required: false
-        }
-
-    section("Custom Message") {
-      input "textMessage_${buttonNumber}", "text", title: "Message", required: false
+    section("Dimmer Lights") {
+      input "dimmers_${buttonNumber}_pushed", "capability.switch", title: "Dimmers", multiple: true, required: false
+      input "dimmersAction_${buttonNumber}_pushed", "enum", multiple: false, title: "Button Action:", required: false, metadata:[values:["On","Off"]]
+      if (buttonNumber == 1) {
+        getDimmerLightsInputs(buttonNumber)
+      } else {
+        input "dimmersLevel_${buttonNumber}_pushed", "number", title: "Level: 1 to 99", defaultValue: 99, required: true, multiple: false
+      }
     }
+  }
+}
 
-        section("Push Notifications") {
-            input "notifications_${buttonNumber}_pushed","bool" ,title: "Pushed", required: false, defaultValue: false
-            input "notifications_${buttonNumber}_held", "bool", title: "Held", required: false, defaultValue: false
-        }
+def getColorLightInputs(buttonNumber) {
+  5.times {
+    input "lightsLevel${it}_${buttonNumber}_pushed", "integer", title: "Level: 1 to 100", defaultValue: 100, required: true, multiple: false
+    input "lightsColor${it}_${buttonNumber}_pushed", "enum", multiple: false, title: "Color (Default is Soft White):", defaultValue: "Soft White", required: true, metadata:[values:["Soft White","White","Daylight","Warm White","Red","Green","Blue","Yellow","Orange","Purple","Pink"]]
+  }
+}
 
-        section("Sms Notifications") {
-            input "phone_${buttonNumber}_pushed","phone" ,title: "Pushed", required: false
-            input "phone_${buttonNumber}_held", "phone", title: "Held", required: false
-        }
+def getDimmerLightsInputs(buttonNumber) {
+  5.times {
+    input "dimmersLevel${it}_${buttonNumber}_pushed", "number", title: "Level: 1 to 99", defaultValue: 99, required: true, multiple: false
   }
 }
 
@@ -143,14 +114,7 @@ def configured() {
 }
 
 def buttonConfigured(idx) {
-  return settings["lights_$idx_pushed"] ||
-    settings["locks_$idx_pushed"] ||
-    settings["sonos_$idx_pushed"] ||
-    settings["mode_$idx_pushed"] ||
-        settings["notifications_$idx_pushed"] ||
-        settings["sirens_$idx_pushed"] ||
-        settings["notifications_$idx_pushed"]   ||
-        settings["phone_$idx_pushed"]
+  return settings["lights_$idx_pushed"] || settings["dimmer_$idx_pushed"]
 }
 
 def buttonEvent(evt){
@@ -186,32 +150,29 @@ def buttonEvent(evt){
 
 def executeHandlers(buttonNumber, value) {
   log.debug "executeHandlers: $buttonNumber - $value"
+  def currentState = ""
+
+  if (!state.clickNumber || state.clickNumber > 4) {
+    state.clickNumber = 0
+  }
+
+  if (buttonNumber == 1) {
+    state.clickNumber = state.clickNumber + 1
+    currentState = "${state.clickNumber}"
+  }
+
+  log.debug "state.clickNumber: ${state.clickNumber}"
 
   def lights = find('lights', buttonNumber, value)
-  if (lights != null) toggle(lights)
+  def lightsAction = find('lightsAction', buttonNumber, value)
+  def lightsLevel = find("lightsLevel${currentState}", buttonNumber, value)
+  def lightsColor = find("lightsColor${currentState}", buttonNumber, value)
+  if (lights != null) toggle(lights, lightsAction, lightsLevel, lightsColor)
 
-  def locks = find('locks', buttonNumber, value)
-  if (locks != null) toggle(locks)
-
-  def sonos = find('sonos', buttonNumber, value)
-  if (sonos != null) toggle(sonos)
-
-  def mode = find('mode', buttonNumber, value)
-  if (mode != null) changeMode(mode)
-
-  def phrase = find('phrase', buttonNumber, value)
-  if (phrase != null) location.helloHome.execute(phrase)
-
-  def textMessage = findMsg('textMessage', buttonNumber)
-
-  def notifications = find('notifications', buttonNumber, value)
-  if (notifications?.toBoolean()) sendPush(textMessage ?: "Button $buttonNumber was pressed" )
-
-  def phone = find('phone', buttonNumber, value)
-  if (phone != null) sendSms(phone, textMessage ?:"Button $buttonNumber was pressed")
-
-    def sirens = find('sirens', buttonNumber, value)
-    if (sirens != null) toggle(sirens)
+  def dimmers = find('dimmers', buttonNumber, value)
+  def dimmersAction = find('dimmersAction', buttonNumber, value)
+  def dimmersLevel = find("dimmersLevel${currentState}", buttonNumber, value)
+  if (dimmers != null) toggle(dimmers, dimmersAction, dimmersLevel)
 }
 
 def find(type, buttonNumber, value) {
@@ -234,89 +195,82 @@ def findMsg(type, buttonNumber) {
   return pref
 }
 
-def toggle(devices) {
+def toggle(devices, action, level, color = null) {
   log.debug "toggle: $devices = ${devices*.currentValue('switch')}"
 
-  if (devices*.currentValue('switch').contains('on')) {
+  setLightProperties(devices, level, color)
+
+  if (action == "On") {
+    devices.on()
+  }
+
+  if (action == "Off") {
     devices.off()
   }
-  else if (devices*.currentValue('switch').contains('off')) {
-    devices.on()
-  }
-  else if (devices*.currentValue('lock').contains('locked')) {
-    devices.unlock()
-  }
-  else if (devices*.currentValue('lock').contains('unlocked')) {
-    devices.lock()
-  }
-  else if (devices*.currentValue('alarm').contains('off')) {
-        devices.siren()
+}
+
+def setColor(devices, level, color) {
+  state.newValue = null
+  if(color) {
+    switch(color) {
+      case "White":
+        state.hueColor1 = 52
+        state.saturation1 = 19
+        break;
+      case "Daylight":
+        state.hueColor1 = 53
+        state.saturation1 = 91
+        break;
+      case "Soft White":
+        state.hueColor1 = 23
+        state.saturation1 = 56
+        break;
+      case "Warm White":
+        state.hueColor1 = 20
+        state.saturation1 = 80 //83
+        break;
+      case "Blue":
+        state.hueColor1 = 70
+        state.saturation1 = 100
+              break;
+      case "Green":
+        state.hueColor1 = 39
+        state.saturation1 = 100
+              break;
+      case "Yellow":
+        state.hueColor1 = 25
+        state.saturation1 = 100
+              break;
+      case "Orange":
+        state.hueColor1 = 10
+        state.saturation1 = 100
+              break;
+      case "Purple":
+        state.hueColor1 = 75
+        state.saturation1 = 100
+              break;
+      case "Pink":
+        state.hueColor1 = 83
+        state.saturation1 = 100
+              break;
+      case "Red":
+        state.hueColor1 = 100
+        state.saturation1 = 100
+        break;
     }
-  else {
-    devices.on()
-  }
-}
 
-def changeMode(mode) {
-  log.debug "changeMode: $mode, location.mode = $location.mode, location.modes = $location.modes"
-
-  if (location.mode != mode && location.modes?.find { it.name == mode }) {
-    setLocationMode(mode)
-  }
-}
-
-// execution filter methods
-private getAllOk() {
-  modeOk && daysOk && timeOk
-}
-
-private getModeOk() {
-  def result = !modes || modes.contains(location.mode)
-  log.trace "modeOk = $result"
-  result
-}
-
-private getDaysOk() {
-  def result = true
-  if (days) {
-    def df = new java.text.SimpleDateFormat("EEEE")
-    if (location.timeZone) {
-      df.setTimeZone(location.timeZone)
+    def myLightLevel = level as Integer
+    def myhueColor = state.hueColor1 as Integer
+    def mySat = state.saturation1 as Integer
+    state.newValue = [hue: myhueColor, saturation: mySat, level: myLightLevel]
+    devices*.setColor(state.newValue)
+  } else {
+    if (level > 99) {
+      state.level = 99
+    } else {
+      state.level = level
     }
-    else {
-      df.setTimeZone(TimeZone.getTimeZone("America/New_York"))
-    }
-    def day = df.format(new Date())
-    result = days.contains(day)
+    def newLevel = state.level as Integer
+    devices*.setLevel(newLevel)
   }
-  log.trace "daysOk = $result"
-  result
-}
-
-private getTimeOk() {
-  def result = true
-  if (starting && ending) {
-    def currTime = now()
-    def start = timeToday(starting, location.timeZone).time
-    def stop = timeToday(ending, location.timeZone).time
-    result = start < stop ? currTime >= start && currTime <= stop : currTime <= stop || currTime >= start
-  }
-  log.trace "timeOk = $result"
-  result
-}
-
-private hhmm(time, fmt = "h:mm a")
-{
-  def t = timeToday(time, location.timeZone)
-  def f = new java.text.SimpleDateFormat(fmt)
-  f.setTimeZone(location.timeZone ?: timeZone(time))
-  f.format(t)
-}
-
-private hideOptionsSection() {
-  (starting || ending || days || modes) ? false : true
-}
-
-private timeIntervalLabel() {
-  (starting && ending) ? hhmm(starting) + "-" + hhmm(ending, "h:mm a z") : ""
 }
